@@ -114,7 +114,7 @@ global variable
 # number of points in each sample
 num_points = 1024
 # number of categories
-k = 4
+k = 1
 # epoch number
 epo = 50
 # define optimizer
@@ -136,7 +136,7 @@ branch_4 = model_branch(input_points4)
 branch_5 = model_branch(input_points5)
 
 global_feature = concatenate([branch_1, branch_2,branch_3,branch_4,branch_5])
-
+# print(global_feature.shape)
 # point_net_seg
 c = Convolution1D(512, 1, activation='relu')(global_feature)
 c = BatchNormalization()(c)
@@ -146,29 +146,30 @@ c = Convolution1D(128, 1, activation='relu')(c)
 c = BatchNormalization()(c)
 c = Convolution1D(128, 1, activation='relu')(c)
 c = BatchNormalization()(c)
-prediction = Convolution1D(k, 1, activation='softmax')(c)
+prediction = Convolution1D(k, 1, activation='sigmoid')(c)
+print(prediction.shape)
 '''
 end of pointnet
 '''
 
 # define model
 model = Model(inputs=[input_points1, input_points2,input_points3,input_points4,input_points5], outputs=prediction)
-print(model.summary())
+# print(model.summary())
 
 '''
 load train and test data
 '''
-data_set,label_set = get_train_data(100)
+data_set,label_set,z = get_train_data(1000)
+print(data_set[0].shape)
 '''
 train and evaluate the model
 '''
 # compile classification model
-model.compile(optimizer='adam',
-              loss='categorical_crossentropy',
+model.compile(optimizer='sgd',
+              loss='binary_crossentropy',
               metrics=['accuracy'])
 # train model
-for i in range(epo):
-    model.fit(data_set, label_set, batch_size=4, epochs=1, shuffle=True, verbose=1)
+model.fit([data_set[0],data_set[1],data_set[2],data_set[3],data_set[4]], label_set, batch_size=8, epochs=10, shuffle=True, verbose=1)
     # evaluate model
 #     if i % 5 == 0:
 #         score = model.evaluate(test_points_r, test_labels_r, verbose=1)

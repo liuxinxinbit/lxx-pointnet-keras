@@ -47,13 +47,15 @@ def get_target_img_array(imagesize,img_num):
         # print(i)
     return image
 def img2point(img):
-    nz =np.transpose(np.nonzero(img))
-    if nz.shape[1]==2:
+    idx = np.flatnonzero( img > 0.0)
+    nz = np.array([np.unravel_index(i, img.shape) for i in idx])
+    # print(nz.shape)
+    if nz.shape[0]!=0:
         n = np.zeros((nz.shape[0],3))
         n[:,0:2] = nz
         return list(n)
     else:
-        return list(nz)
+        return list(np.zeros((1024,3)))
 
 def normalize_pointset(pointset,num = 1024):
     pointset = list(pointset)
@@ -66,10 +68,12 @@ def normalize_pointset(pointset,num = 1024):
 def get_train_data(data_num,img_num = 5):
     data_set = [np.zeros((data_num,1024,3))]*img_num
     label_set = []
+    data11 = None
     for i in range(data_num):
         train_image = get_target_img_array(640,img_num)
         noise_image = get_noise_img_array(640,img_num)
         data = []
+        label=[]
         for j in range(img_num):
             img = train_image[:,:,j]
             noise = noise_image[:,:,j]
@@ -80,12 +84,27 @@ def get_train_data(data_num,img_num = 5):
             nz = normalize_pointset(img_nz+noise_nz)
             data.append(nz)
             data_set[j][i,:,:] = data[j]
-
+            data11 = train_image+noise_image
         label_set.append(label)
+            
     for j in range(img_num):
            data_set[j] = np.array(data_set[j])
     label_set = np.array(label_set)
-    return data_set,label_set
+    label_set = np.expand_dims(label_set,-1)
+    return data_set,label_set,data11
+def pointset2img(pointset):
+    img =np.zeros((640,640))
+    pointset  = list(pointset)
+    for point in pointset:
+        cv2.circle(img,(np.int16(point[0]),np.int16(point[1])),randint(1,5),(255,255,255),-1)
+    return img
 
-# data_set,label_set = get_train_data(10)
-# print(np.array(data_set[0]).shape,label_set.shape)
+
+
+data_set,label_set,train_image = get_train_data(10,img_num = 5)
+print(np.array(data_set[0]).shape,label_set.shape,train_image.shape)
+for i in range(len(data_set)):
+    print(data_set[i][0,:,:].shape)
+    img = pointset2img(data_set[i][0,:,:])
+    plt.imshow(train_image[:,:,i])
+    plt.show()
