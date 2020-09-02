@@ -5,7 +5,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 import cv2
-import skimage
+import keras
 
 def get_noise_img(imagesize):
     img = np.zeros((imagesize,imagesize),dtype=np.uint8)
@@ -63,35 +63,40 @@ def normalize_pointset(pointset,num = 1024):
         for i in range(np.int16(num/len(pointset))+1):
             pointset += pointset
     pointset = pointset[:num]
-    return np.array(pointset)
+    return pointset
 
 def get_train_data(data_num,img_num = 5):
-    data_set = [np.zeros((data_num,1024,3))]*img_num
-    label_set = []
-    data11 = None
+    data_set = np.zeros((data_num,1024,3*img_num))
+    label_set = np.zeros((data_num,1024,2))
     for i in range(data_num):
         train_image = get_target_img_array(640,img_num)
         noise_image = get_noise_img_array(640,img_num)
         data = []
         label=[]
         for j in range(img_num):
+            randnum = random.randint(0,100)
             img = train_image[:,:,j]
             noise = noise_image[:,:,j]
             img_nz = img2point(img)
             noise_nz = img2point(noise)
             if j ==0:
                 label = normalize_pointset([1]*len(img_nz)+[0]*len(noise_nz))
+                random.seed(randnum)
+                random.shuffle(label)
+                label = np.array(label)
+                label = keras.utils.to_categorical(label, 2)
+
             nz = normalize_pointset(img_nz+noise_nz)
-            data.append(nz)
-            data_set[j][i,:,:] = data[j]
-            data11 = train_image+noise_image
-        label_set.append(label)
             
-    for j in range(img_num):
-           data_set[j] = np.array(data_set[j])
+            random.seed(randnum)
+            random.shuffle(nz)
+            nz = np.array(nz)
+            data.append(nz)
+            data_set[i,:,j*3:j*3+3] = data[j]
+        label_set[i,:,:] = label
     label_set = np.array(label_set)
-    label_set = np.expand_dims(label_set,-1)
-    return data_set,label_set,data11
+    # label_set = np.expand_dims(label_set,-1)
+    return data_set,label_set
 def pointset2img(pointset):
     img =np.zeros((640,640))
     pointset  = list(pointset)
@@ -101,10 +106,13 @@ def pointset2img(pointset):
 
 
 
-data_set,label_set,train_image = get_train_data(10,img_num = 5)
-print(np.array(data_set[0]).shape,label_set.shape,train_image.shape)
-for i in range(len(data_set)):
-    print(data_set[i][0,:,:].shape)
-    img = pointset2img(data_set[i][0,:,:])
-    plt.imshow(train_image[:,:,i])
-    plt.show()
+# data_set,label_set,train_image = get_train_data(10,img_num = 5)
+# print(np.array(data_set[0]).shape,label_set.shape,train_image.shape)
+# label_set = (label_set[0,:,0])
+# for i in range(1024):
+#     print(label_set[i])
+# for i in range(len(data_set)):
+#     print(data_set[i][0,:,:].shape)
+#     img = pointset2img(data_set[i][0,:,:])
+#     plt.imshow(train_image[:,:,i])
+#     plt.show()

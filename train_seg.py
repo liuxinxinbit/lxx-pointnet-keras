@@ -13,7 +13,7 @@ from keras import optimizers
 from keras.layers import Input
 from keras.models import Model
 from keras.layers import Dense, Reshape
-from keras.layers import Convolution1D, MaxPooling1D, BatchNormalization
+from keras.layers import Convolution1D, MaxPooling1D, BatchNormalization, Activation
 from keras.layers import Lambda, concatenate
 #from keras.utils import np_utils
 import h5py
@@ -59,9 +59,9 @@ def model_branch(input_points):
     x = Convolution1D(64, 1, activation='relu',
                   input_shape=(num_points, 3))(input_points)
     x = BatchNormalization()(x)
-    x = Convolution1D(128, 1, activation='relu')(x)
+    x = Convolution1D(128, 3, activation='relu',padding="same")(x)
     x = BatchNormalization()(x)
-    x = Convolution1D(1024, 1, activation='relu')(x)
+    x = Convolution1D(1024, 3, activation='relu',padding="same")(x)
     x = BatchNormalization()(x)
     x = MaxPooling1D(pool_size=num_points)(x)
     x = Dense(512, activation='relu')(x)
@@ -73,17 +73,17 @@ def model_branch(input_points):
 
     # forward net
     g = Lambda(mat_mul, arguments={'B': input_T})(input_points)
-    g = Convolution1D(64, 1, input_shape=(num_points, 3), activation='relu')(g)
+    g = Convolution1D(64, 3, input_shape=(num_points, 3), activation='relu',padding="same")(g)
     g = BatchNormalization()(g)
-    g = Convolution1D(64, 1, input_shape=(num_points, 3), activation='relu')(g)
+    g = Convolution1D(64, 3, input_shape=(num_points, 3), activation='relu',padding="same")(g)
     g = BatchNormalization()(g)
 
     # feature transformation net
-    f = Convolution1D(64, 1, activation='relu')(g)
+    f = Convolution1D(64, 3, activation='relu',padding="same")(g)
     f = BatchNormalization()(f)
-    f = Convolution1D(128, 1, activation='relu')(f)
+    f = Convolution1D(128, 3, activation='relu',padding="same")(f)
     f = BatchNormalization()(f)
-    f = Convolution1D(1024, 1, activation='relu')(f)
+    f = Convolution1D(1024, 3, activation='relu',padding="same")(f)
     f = BatchNormalization()(f)
     f = MaxPooling1D(pool_size=num_points)(f)
     f = Dense(512, activation='relu')(f)
@@ -92,22 +92,8 @@ def model_branch(input_points):
     f = BatchNormalization()(f)
     f = Dense(64 * 64, weights=[np.zeros([256, 64 * 64]), np.eye(64).flatten().astype(np.float32)])(f)
     feature_T = Reshape((64, 64))(f)
-
-    # forward net
-    g = Lambda(mat_mul, arguments={'B': feature_T})(g)
-    seg_part1 = g
-    g = Convolution1D(64, 1, activation='relu')(g)
-    g = BatchNormalization()(g)
-    g = Convolution1D(128, 1, activation='relu')(g)
-    g = BatchNormalization()(g)
-    g = Convolution1D(1024, 1, activation='relu')(g)
-    g = BatchNormalization()(g)
-
-    # global_feature
-    global_feature = MaxPooling1D(pool_size=num_points)(g)
-    global_feature = Lambda(exp_dim, arguments={'num_points': num_points})(global_feature)
-    c = concatenate([seg_part1, global_feature])
-    return c
+    
+    return g,feature_T
 '''
 global variable
 '''
@@ -129,13 +115,42 @@ input_points2 = Input(shape=(num_points, 3))
 input_points3 = Input(shape=(num_points, 3))
 input_points4 = Input(shape=(num_points, 3))
 input_points5 = Input(shape=(num_points, 3))
-branch_1 = model_branch(input_points1)
-branch_2 = model_branch(input_points2)
-branch_3 = model_branch(input_points3)
-branch_4 = model_branch(input_points4)
-branch_5 = model_branch(input_points5)
+g1,feature_T1 = model_branch(input_points1)
+g2,feature_T2 = model_branch(input_points2)
+g3,feature_T3 = model_branch(input_points3)
+g4,feature_T4 = model_branch(input_points4)
+g5,feature_T5 = model_branch(input_points5)
 
-global_feature = concatenate([branch_1, branch_2,branch_3,branch_4,branch_5])
+# forward net
+print("1",g1.shape)
+g = Lambda(mat_mul, arguments={'B': feature_T1})(g1)
+seg_part1 = g
+g = Convolution1D(64, 1, activation='relu')(g)
+g = BatchNormalization()(g)
+print("2",g.shape)
+g = Lambda(mat_mul, arguments={'B': feature_T2})(g)
+g = Convolution1D(64, 1, activation='relu')(g)
+g = BatchNormalization()(g)
+g = Lambda(mat_mul, arguments={'B': feature_T3})(g)
+g = Convolution1D(64, 1, activation='relu')(g)
+g = BatchNormalization()(g)
+g = Lambda(mat_mul, arguments={'B': feature_T4})(g)
+g = Convolution1D(64, 1, activation='relu')(g)
+g = BatchNormalization()(g)
+g = Lambda(mat_mul, arguments={'B': feature_T5})(g)
+g = Convolution1D(256, 1, activation='relu')(g)
+g = BatchNormalization()(g)
+g = Convolution1D(512, 1, activation='relu')(g)
+g = BatchNormalization()(g)
+g = Convolution1D(1024, 1, activation='relu')(g)
+g = BatchNormalization()(g)
+# global_feature
+global_feature = MaxPooling1D(pool_size=num_points)(g)
+global_feature = Lambda(exp_dim, arguments={'num_points': num_points})(global_feature)
+
+global_feature = concatenate([seg_part1, global_feature])
+# global_feature = concatenate([branch_1, branch_2,branch_3,branch_4,branch_5])
+
 # print(global_feature.shape)
 # point_net_seg
 c = Convolution1D(512, 1, activation='relu')(global_feature)
@@ -159,8 +174,8 @@ model = Model(inputs=[input_points1, input_points2,input_points3,input_points4,i
 '''
 load train and test data
 '''
-data_set,label_set,z = get_train_data(1000)
-print(data_set[0].shape)
+# data_set,label_set,z = get_train_data(500)
+# print(data_set[0].shape)
 '''
 train and evaluate the model
 '''
@@ -169,12 +184,18 @@ model.compile(optimizer='sgd',
               loss='binary_crossentropy',
               metrics=['accuracy'])
 # train model
-model.fit([data_set[0],data_set[1],data_set[2],data_set[3],data_set[4]], label_set, batch_size=8, epochs=10, shuffle=True, verbose=1)
+# model.fit([data_set[0],data_set[1],data_set[2],data_set[3],data_set[4]], label_set, batch_size=4, epochs=10, shuffle=True, verbose=1)
+
+for i in range(100):
+    data_set,label_set = get_train_data(2)
+    model.train_on_batch([data_set[0],data_set[1],data_set[2],data_set[3],data_set[4]], label_set)
+
     # evaluate model
-#     if i % 5 == 0:
-#         score = model.evaluate(test_points_r, test_labels_r, verbose=1)
-#         print('Test loss: ', score[0])
-#         print('Test accuracy: ', score[1])
+    if i % 5 == 0:
+        data_set,label_set,z = get_train_data(2)
+        score = model.evaluate([data_set[0],data_set[1],data_set[2],data_set[3],data_set[4]], label_set, verbose=1)
+        print('Test loss: ', score[0])
+        print('Test accuracy: ', score[1])
 
 # '''
 # visualization
